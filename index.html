@@ -165,6 +165,7 @@
             justify-content: center;
             color: rgba(255, 255, 255, 0.3);
             font-size: 12px;
+            position: relative;
         }
 
         .film-poster img {
@@ -199,6 +200,7 @@
             justify-content: center;
             opacity: 0;
             transition: all 0.3s;
+            z-index: 10;
         }
 
         .film-card:hover .play-icon {
@@ -292,6 +294,25 @@
             padding: 50px 20px;
             color: #ff6b6b;
             font-size: 16px;
+            line-height: 1.6;
+        }
+
+        .retry-btn {
+            margin-top: 20px;
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #FFD700, #FFA500);
+            border: none;
+            border-radius: 25px;
+            color: #000;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .retry-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(255, 215, 0, 0.4);
         }
     </style>
 </head>
@@ -333,32 +354,76 @@
         let allFilms = [];
         let filteredFilms = [];
 
-        // JSON verilerini çek
+        // CORS proxy'leri (sırayla denenecek)
+        const CORS_PROXIES = [
+            'https://api.allorigins.win/raw?url=',
+            'https://corsproxy.io/?',
+            'https://cors-anywhere.herokuapp.com/',
+            ''  // Direct (son çare)
+        ];
+
+        const API_URL = 'http://vtrump10.cdn.zerocdn.com/hdfilmcehennemi-v1.json';
+
+        // JSON verilerini çek (CORS proxy ile)
         async function fetchFilms() {
-            try {
-                const response = await fetch('http://vtrump10.cdn.zerocdn.com/hdfilmcehennemi-v1.json');
-                
-                if (!response.ok) {
-                    throw new Error('Filmler yüklenemedi');
+            let lastError = null;
+            
+            // Her proxy'yi dene
+            for (let i = 0; i < CORS_PROXIES.length; i++) {
+                try {
+                    const proxyUrl = CORS_PROXIES[i] + encodeURIComponent(API_URL);
+                    console.log(`Deneniyor (${i + 1}/${CORS_PROXIES.length}):`, proxyUrl);
+                    
+                    const response = await fetch(proxyUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    
+                    // JSON'u diziye çevir
+                    allFilms = Object.entries(data).map(([key, value]) => ({
+                        id: key,
+                        ...value
+                    }));
+
+                    if (allFilms.length > 0) {
+                        console.log(`✓ Başarılı! ${allFilms.length} film yüklendi`);
+                        filteredFilms = [...allFilms];
+                        displayFilms(filteredFilms);
+                        updateStats();
+                        return; // Başarılı, döngüden çık
+                    }
+                } catch (error) {
+                    console.error(`Proxy ${i + 1} başarısız:`, error);
+                    lastError = error;
+                    continue; // Sonraki proxy'yi dene
                 }
-
-                const data = await response.json();
-                
-                // JSON'u diziye çevir
-                allFilms = Object.entries(data).map(([key, value]) => ({
-                    id: key,
-                    ...value
-                }));
-
-                filteredFilms = [...allFilms];
-                displayFilms(filteredFilms);
-                updateStats();
-            } catch (error) {
-                console.error('Hata:', error);
-                document.getElementById('stats').style.display = 'none';
-                document.getElementById('errorMessage').style.display = 'block';
-                document.getElementById('errorMessage').textContent = 'Filmler yüklenirken bir hata oluştu. Lütfen sayfayı yenileyin.';
             }
+            
+            // Hiçbiri çalışmadıysa hata göster
+            showError(lastError);
+        }
+
+        // Hata göster
+        function showError(error) {
+            document.getElementById('stats').style.display = 'none';
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.style.display = 'block';
+            errorDiv.innerHTML = `
+                <div>⚠️ Filmler yüklenemedi</div>
+                <div style="margin-top: 10px; font-size: 14px;">
+                    CORS hatası nedeniyle veriler çekilemedi.<br>
+                    Lütfen sayfayı yenileyin veya daha sonra tekrar deneyin.
+                </div>
+                <button class="retry-btn" onclick="location.reload()">🔄 Yeniden Dene</button>
+            `;
         }
 
         // Filmleri göster
@@ -380,12 +445,14 @@
                 filmCard.className = 'film-card';
                 
                 const posterHtml = film.resim 
-                    ? `<img src="${film.resim}" alt="${film.isim}" onerror="this.parentElement.innerHTML='Poster<br>Yok'">`
-                    : 'Poster<br>Yok';
+                    ? `<img src="${film.resim}" alt="${film.isim}" onerror="this.parentElement.innerHTML='<div style=\\'padding:20px;text-align:center\\'>📽️<br>Poster<br>Yok</div>'">`
+                    : '<div style="padding:20px;text-align:center">📽️<br>Poster<br>Yok</div>';
                 
                 filmCard.innerHTML = `
-                    <div class="film-poster">${posterHtml}</div>
-                    <div class="play-icon"></div>
+                    <div class="film-poster">
+                        ${posterHtml}
+                        <div class="play-icon"></div>
+                    </div>
                     <div class="film-title">${film.isim || 'İsimsiz Film'}</div>
                 `;
                 
